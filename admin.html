@@ -100,7 +100,18 @@ async function loadUsers(){
 async function setRole(userId, role){
   const {error}=await sb.from('profiles').update({role}).eq('id',userId);
   if(error){showToast('Error: '+error.message);return;}
-  showToast(role==='user'?'✅ User approved!':'🚫 Access revoked');
+  
+  // Approve hone pe email bhejo
+  if(role==='user'){
+    const {data:profile}=await sb.from('profiles').select('email,name').eq('id',userId).single();
+    if(profile){
+      await sb.functions.invoke('send-approval-email',{
+        body:{email:profile.email, name:profile.name}
+      });
+    }
+  }
+  
+  showToast(role==='user'?'✅ User approved! Email sent 📧':'🚫 Access revoked');
   loadUsers();
 }
 
