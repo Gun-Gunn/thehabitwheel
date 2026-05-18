@@ -97,20 +97,34 @@ async function loadUsers(){
   `).join(''):'<div class="empty">Koi active user nahi</div>';
 }
 
-async function setRole(userId, role){
-  const {error}=await sb.from('profiles').update({role}).eq('id',userId);
-  if(error){showToast('Error: '+error.message);return;}
-  
-  // Approve hone pe email bhejo
-  if(role==='user'){
-    const {data:profile}=await sb.from('profiles').select('email,name').eq('id',userId).single();
-    if(profile){
-      await sb.functions.invoke('send-approval-email',{
-        body:{email:profile.email, name:profile.name}
+async function setRole(userId, role) {
+  const { error } = await sb.from('profiles').update({ role }).eq('id', userId);
+  if (error) { showToast('Error: ' + error.message); return; }
+
+  if (role === 'user') {
+    const { data: profile } = await sb.from('profiles')
+      .select('email,name')
+      .eq('id', userId)
+      .single();
+    
+    if (profile) {
+      // Supabase functions invoke ki jagah direct fetch use karo
+      const res = await fetch('https://ogigpzekqgdgtldcfyjz.supabase.co/functions/v1/send-approval-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sb.supabaseKey}`
+        },
+        body: JSON.stringify({ email: profile.email, name: profile.name })
       });
+      const result = await res.json();
+      console.log('Email result:', result);
     }
   }
-  
+
+  showToast(role === 'user' ? '✅ User approved! Email sent 📧' : '🚫 Access revoked');
+  loadUsers();
+}  
   showToast(role==='user'?'✅ User approved! Email sent 📧':'🚫 Access revoked');
   loadUsers();
 }
