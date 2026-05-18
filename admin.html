@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin — Habit Wheel</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#FFF9F0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:1rem}
+.app{max-width:600px;margin:0 auto}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
+.title{font-size:20px;font-weight:600;color:#FF3B30}
+.logout-btn{padding:6px 14px;border:2px solid #FFD6C8;border-radius:8px;background:#fff;color:#FF3B30;cursor:pointer;font-size:12px}
+.section{background:#fff;border:2px solid #FFE0CC;border-radius:14px;padding:1rem;margin-bottom:1rem}
+.section-title{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:1rem}
+.user-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #FFF0E8;gap:8px;flex-wrap:wrap}
+.user-row:last-child{border-bottom:none}
+.user-email{font-size:13px;color:#333;flex:1}
+.user-role{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:500}
+.role-pending{background:#FFF3E0;color:#E65100}
+.role-user{background:#E8F5E9;color:#2e7d32}
+.role-admin{background:#FCE4EC;color:#880E4F}
+.action-btns{display:flex;gap:6px}
+.approve-btn{padding:5px 12px;border:none;border-radius:7px;background:#4CAF50;color:#fff;cursor:pointer;font-size:12px;font-weight:500}
+.revoke-btn{padding:5px 12px;border:none;border-radius:7px;background:#FF5722;color:#fff;cursor:pointer;font-size:12px;font-weight:500}
+.empty{text-align:center;color:#bbb;font-size:13px;padding:1rem}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:#222;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:all 0.3s;z-index:999}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="title">🛡 Admin Panel</div>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">⏳ Pending Users</div>
+    <div id="pendingList"><div class="empty">Loading...</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">✅ Active Users</div>
+    <div id="activeList"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ogigpzekqgdgtldcfyjz.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9naWdwemVrcWdkZ3RsZGNmeWp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwOTI4MTksImV4cCI6MjA5NDY2ODgxOX0.3_Jx9NbZWUhWguljC74jzfSuQIrI_-NM_Dphcc0AGk0';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+// Auth check
+sb.auth.getSession().then(async ({data})=>{
+  if(!data.session){window.location.href='index.html';return;}
+  const {data:p}=await sb.from('profiles').select('role').eq('id',data.session.user.id).single();
+  if(!p||p.role!=='admin'){window.location.href='index.html';return;}
+  loadUsers();
+});
+
+async function loadUsers(){
+  const {data,error}=await sb.from('profiles').select('*').order('created_at',{ascending:false});
+  if(error||!data){return;}
+  
+  const pending=data.filter(u=>u.role==='pending');
+  const active=data.filter(u=>u.role==='user'||u.role==='admin');
+
+  document.getElementById('pendingList').innerHTML=pending.length?pending.map(u=>`
+    <div class="user-row">
+      <div class="user-email">${u.email}</div>
+      <span class="user-role role-pending">Pending</span>
+      <div class="action-btns">
+        <button class="approve-btn" onclick="setRole('${u.id}','user')">✓ Approve</button>
+      </div>
+    </div>
+  `).join(''):'<div class="empty">Koi pending user nahi</div>';
+
+  document.getElementById('activeList').innerHTML=active.length?active.map(u=>`
+    <div class="user-row">
+      <div class="user-email">${u.email}</div>
+      <span class="user-role role-${u.role}">${u.role==='admin'?'Admin':'User'}</span>
+      <div class="action-btns">
+        ${u.role!=='admin'?`<button class="revoke-btn" onclick="setRole('${u.id}','pending')">Revoke</button>`:'<span style="font-size:11px;color:#bbb">You</span>'}
+      </div>
+    </div>
+  `).join(''):'<div class="empty">Koi active user nahi</div>';
+}
+
+async function setRole(userId, role){
+  const {error}=await sb.from('profiles').update({role}).eq('id',userId);
+  if(error){showToast('Error: '+error.message);return;}
+  showToast(role==='user'?'✅ User approved!':'🚫 Access revoked');
+  loadUsers();
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  window.location.href='index.html';
+}
+</script>
+</body>
+</html>
